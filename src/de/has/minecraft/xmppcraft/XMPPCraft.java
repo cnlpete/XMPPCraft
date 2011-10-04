@@ -2,7 +2,6 @@ package de.has.minecraft.xmppcraft;
 
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.Random;
 import java.util.logging.Logger;
 
@@ -25,6 +24,7 @@ import org.jivesoftware.smack.XMPPConnection;
 import org.jivesoftware.smack.XMPPException;
 import org.jivesoftware.smack.packet.Message;
 import org.jivesoftware.smack.packet.Packet;
+import org.jivesoftware.smackx.muc.Affiliate;
 import org.jivesoftware.smackx.muc.DiscussionHistory;
 import org.jivesoftware.smackx.muc.MultiUserChat;
 import org.jivesoftware.smackx.muc.Occupant;
@@ -200,6 +200,37 @@ public class XMPPCraft extends JavaPlugin {
 			this.plugin = plugin;
 		}
 
+		String findNickName(String nickname, MultiUserChat muc) {
+			Random r = new Random();
+			boolean notUsedMCPrefix = true;
+			boolean x = true;
+
+			try {
+				while (x) {
+					Collection<Affiliate> afs = muc.getMembers();
+					x = false;
+					for (Affiliate affiliate : afs) {
+						if (affiliate.getNick().equals(nickname)) {
+							if (notUsedMCPrefix) {
+								nickname = "MC " + nickname;
+								notUsedMCPrefix = false;
+								x = true;
+							}
+							else {
+								nickname = nickname + r.nextInt(10);
+								x = true;
+							}
+							break;
+						}
+					}
+				}
+			} catch (XMPPException e) {
+				log.severe(logPrefix + "could not get member list " + e.getMessage());
+			}
+
+			return nickname;
+		}
+
 		@Override
 		public void onPlayerJoin(PlayerJoinEvent event) {
 
@@ -231,23 +262,7 @@ public class XMPPCraft extends JavaPlugin {
 				chatRoom.addParticipantStatusListener(new MyParticipantListener(event.getPlayer()));
 				chatRoom.addSubjectUpdatedListener(new MySubjectListener(event.getPlayer()));
 				// chatRoom.addUserStatusListener(this);
-				String chosenNickname = event.getPlayer().getDisplayName();
-				Iterator<String> it = chatRoom.getOccupants();
-				boolean notUsedMCPrefix = true;
-				Random r = new Random();
-				while (it.hasNext()) {
-					if (it.next().equals(chosenNickname)) {
-						if(notUsedMCPrefix) {
-							chosenNickname = "MC " + chosenNickname;
-							notUsedMCPrefix = false;
-						}
-						else {
-							chosenNickname = chosenNickname + r.nextInt(10);
-						}
-						//start from beginning...
-						it = chatRoom.getOccupants();
-					}
-				}
+				String chosenNickname = findNickName(event.getPlayer().getDisplayName(), chatRoom);
 
 				chatRoom.join(chosenNickname, configuration.getString("room.password", ""), history, SmackConfiguration.getPacketReplyTimeout());
 
