@@ -50,6 +50,36 @@ public class XMPPCraft extends JavaPlugin {
 			this.p = p;
 		}
 		
+
+		private boolean shallDisplayMessage(Occupant o) {
+
+			// if message from myself?
+			if (muc.getNickname().equals(o.getNick()))
+				return false;
+
+			// if message from minecraftler with this username?
+			if (getServer().getPlayer(o.getNick()) != null) {
+				// check if this user has a different nick (MC_...) or
+				// (MC_...123)
+
+				// get all XMPP members
+				Iterator<String> it = muc.getOccupants();
+				while (it.hasNext()) {
+					String cur = it.next();
+					if (cur.contains(o.getNick())) {
+						cur = getNickname(cur); // sth. like 'a@b.c/nickname',
+													// split to get the nickname
+						if ("MC ".equals(cur.substring(0, 3)))
+							return true;
+					}
+				}
+
+				return false;
+			}
+
+			return true;
+		}
+
 		@Override
 		public void processPacket(Packet packet) {
 
@@ -58,9 +88,8 @@ public class XMPPCraft extends JavaPlugin {
 
 				Occupant actor = muc.getOccupant(message.getFrom());
 				// message not from myself ... or other player on this server
-				if (!muc.getNickname().equals(actor.getNick()) && getServer().getPlayer(actor.getNick()) == null) {
-					// TODO check for other members also? or disable minecraft
-					// internal chat??
+				
+				if (shallDisplayMessage(actor)) {
 					String actorNick = (actor.getRole().equals("moderator") ? "@" : actor.getRole().equals("participant") ? "+" : "") + actor.getNick();
 					String body = message.getBody();
 					// getServer().broadcastMessage(actorNick + ": " + body);
