@@ -2,9 +2,11 @@ package de.has.minecraft.xmppcraft;
 
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Random;
 import java.util.logging.Logger;
 
+import org.bukkit.ChatColor;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Event;
 import org.bukkit.event.player.PlayerChatEvent;
@@ -24,7 +26,6 @@ import org.jivesoftware.smack.XMPPConnection;
 import org.jivesoftware.smack.XMPPException;
 import org.jivesoftware.smack.packet.Message;
 import org.jivesoftware.smack.packet.Packet;
-import org.jivesoftware.smackx.muc.Affiliate;
 import org.jivesoftware.smackx.muc.DiscussionHistory;
 import org.jivesoftware.smackx.muc.MultiUserChat;
 import org.jivesoftware.smackx.muc.Occupant;
@@ -39,17 +40,30 @@ public class XMPPCraft extends JavaPlugin {
 	private HashMap<String, Connection> connections;
 	private HashMap<String, MultiUserChat> chatrooms;
 
-	private final class MyPacketListener implements PacketListener {
+	private final class MyListener
+			implements PacketListener, SubjectUpdatedListener,
+			ParticipantStatusListener {
 		private MultiUserChat muc;
 		private Player p;
 
-		public MyPacketListener(MultiUserChat muc, Player p) {
+		public MyListener(MultiUserChat muc, Player p) {
 			super();
 			
 			this.muc = muc;
 			this.p = p;
 		}
 		
+		private String getNickname(String nickname) {
+
+			// try to find in chat-list
+			Occupant o = muc.getOccupant(nickname);
+			if (o != null)
+				return o.getNick();
+			else {
+				String[] tmp = nickname.split("/");
+				return tmp[tmp.length - 1];
+			}
+		}
 
 		private boolean shallDisplayMessage(Occupant o) {
 
@@ -102,33 +116,6 @@ public class XMPPCraft extends JavaPlugin {
 			}
 		}
 
-	}
-
-	private final class MySubjectListener implements SubjectUpdatedListener {
-		private Player p;
-
-		MySubjectListener(Player p) {
-
-			this.p = p;
-		}
-		@Override
-		public void subjectUpdated(String subject, String from) {
-
-			p.sendMessage("Subject changed to " + subject);
-		}
-
-	}
-
-	private final class MyParticipantListener
-			implements ParticipantStatusListener {
-
-		private Player p;
-
-		public MyParticipantListener(Player p) {
-
-			this.p = p;
-		}
-
 		@Override
 		public void adminGranted(String participant) {
 
@@ -144,7 +131,7 @@ public class XMPPCraft extends JavaPlugin {
 
 			// if not minecraft player...
 			if (getServer().getPlayer(participant) == null)
-				p.sendMessage(participant + " was banned from the ChatRoom");
+				p.sendMessage(ChatColor.GREEN + getNickname(participant) + ChatColor.GOLD + " was banned from the ChatRoom: " + reason);
 		}
 
 		@Override
@@ -152,7 +139,7 @@ public class XMPPCraft extends JavaPlugin {
 
 			// if not minecraft player...
 			if (getServer().getPlayer(participant) == null)
-				p.sendMessage(participant + " joined the ChatRoom");
+				p.sendMessage(ChatColor.GREEN + getNickname(participant) + ChatColor.GOLD + " joined the ChatRoom");
 		}
 
 		@Override
@@ -160,7 +147,7 @@ public class XMPPCraft extends JavaPlugin {
 
 			// if not minecraft player...
 			if (getServer().getPlayer(participant) == null)
-				p.sendMessage(participant + " was kicked from the ChatRoom");
+				p.sendMessage(ChatColor.GREEN + getNickname(participant) + ChatColor.GOLD + " was kicked from the ChatRoom");
 		}
 
 		@Override
@@ -168,7 +155,7 @@ public class XMPPCraft extends JavaPlugin {
 
 			// if not minecraft player...
 			if (getServer().getPlayer(participant) == null)
-				p.sendMessage(participant + " left the ChatRoom");
+				p.sendMessage(ChatColor.GREEN + getNickname(participant) + ChatColor.GOLD + " left the ChatRoom");
 		}
 
 		@Override
@@ -196,7 +183,7 @@ public class XMPPCraft extends JavaPlugin {
 
 			// if not minecraft player...
 			if (getServer().getPlayer(participant) == null)
-				p.sendMessage(participant + " changed his Nickname to " + newNickname);
+				p.sendMessage(ChatColor.GREEN + getNickname(participant) + ChatColor.GOLD + " changed his Nickname to " + ChatColor.GREEN + newNickname);
 		}
 
 		@Override
@@ -219,7 +206,12 @@ public class XMPPCraft extends JavaPlugin {
 
 		}
 
+		public void subjectUpdated(String subject, String from) {
+
+			p.sendMessage(ChatColor.GOLD + "Subject changed to " + ChatColor.GREEN + subject);
+		}
 	}
+
 
 	private final class MyPlayerListener extends PlayerListener {
 
@@ -254,7 +246,7 @@ public class XMPPCraft extends JavaPlugin {
 		@Override
 		public void onPlayerJoin(PlayerJoinEvent event) {
 
-			// TODO generate Connection and save somewhere
+			// generate Connection and save somewhere
 			String host = configuration.getString("server.host", "localhost");
 			int port = configuration.getInt("server.port", 5222);
 			String service = host;
@@ -266,8 +258,6 @@ public class XMPPCraft extends JavaPlugin {
 			// do we need to set this every time???
 			SASLAuthentication.supportSASLMechanism("PLAIN", 0);
 
-			log.info(logPrefix + "trying con: " + host + ":" + port);
-
 			Connection c = new XMPPConnection(xconfig);
 			try {
 				c.connect();
@@ -278,9 +268,10 @@ public class XMPPCraft extends JavaPlugin {
 				history.setMaxStanzas(0);
 
 				MultiUserChat chatRoom = new MultiUserChat(c, configuration.getString("room.name"));
-				chatRoom.addMessageListener(new MyPacketListener(chatRoom, event.getPlayer()));
-				chatRoom.addParticipantStatusListener(new MyParticipantListener(event.getPlayer()));
-				chatRoom.addSubjectUpdatedListener(new MySubjectListener(event.getPlayer()));
+				MyListener ml = new MyListener(chatRoom, event.getPlayer());
+				chatRoom.addMessageListener(ml);
+				chatRoom.addParticipantStatusListener(ml);
+				chatRoom.addSubjectUpdatedListener(ml);
 				// chatRoom.addUserStatusListener(this);
 
 				joinRoom(chatRoom, event.getPlayer().getDisplayName(), configuration.getString("room.password", ""), history, SmackConfiguration.getPacketReplyTimeout());
