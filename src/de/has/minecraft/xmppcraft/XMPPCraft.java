@@ -229,35 +229,26 @@ public class XMPPCraft extends JavaPlugin {
 			this.plugin = plugin;
 		}
 
-		String findNickName(String nickname, MultiUserChat muc) {
-			Random r = new Random();
-			boolean notUsedMCPrefix = true;
-			boolean x = true;
+		private void joinRoom(MultiUserChat muc, String username,
+				String passwd, DiscussionHistory h, int timeout) {
 
-			try {
-				while (x) {
-					Collection<Affiliate> afs = muc.getMembers();
-					x = false;
-					for (Affiliate affiliate : afs) {
-						if (affiliate.getNick().equals(nickname)) {
-							if (notUsedMCPrefix) {
-								nickname = "MC " + nickname;
-								notUsedMCPrefix = false;
-								x = true;
-							}
-							else {
-								nickname = nickname + r.nextInt(10);
-								x = true;
-							}
-							break;
-						}
-					}
+			boolean njoined = true;
+			Random r = new Random();
+
+			while (njoined) {
+				try {
+					muc.join(username, passwd, h, timeout);
+					njoined = false;
+				} catch (XMPPException e) {
+					// FIXME i just guess this is because of wrong username...
+					if (username.substring(0, 3).equals("MC "))
+						username += r.nextInt(10);
+					else
+						username = "MC " + username;
+					njoined = true;
 				}
-			} catch (XMPPException e) {
-				log.severe(logPrefix + "could not get member list " + e.getMessage());
 			}
 
-			return nickname;
 		}
 
 		@Override
@@ -291,9 +282,8 @@ public class XMPPCraft extends JavaPlugin {
 				chatRoom.addParticipantStatusListener(new MyParticipantListener(event.getPlayer()));
 				chatRoom.addSubjectUpdatedListener(new MySubjectListener(event.getPlayer()));
 				// chatRoom.addUserStatusListener(this);
-				String chosenNickname = findNickName(event.getPlayer().getDisplayName(), chatRoom);
 
-				chatRoom.join(chosenNickname, configuration.getString("room.password", ""), history, SmackConfiguration.getPacketReplyTimeout());
+				joinRoom(chatRoom, event.getPlayer().getDisplayName(), configuration.getString("room.password", ""), history, SmackConfiguration.getPacketReplyTimeout());
 
 				plugin.connections.put(event.getPlayer().getName(), c);
 				plugin.chatrooms.put(event.getPlayer().getName(), chatRoom);
