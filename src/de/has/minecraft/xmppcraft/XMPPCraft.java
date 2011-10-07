@@ -2,7 +2,6 @@ package de.has.minecraft.xmppcraft;
 
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.Random;
 import java.util.logging.Logger;
 
@@ -40,6 +39,8 @@ public class XMPPCraft extends JavaPlugin {
 	private HashMap<String, Connection> connections;
 	private HashMap<String, MultiUserChat> chatrooms;
 
+	private HashMap<String, String> namesMap;
+
 	private final class MyListener
 			implements PacketListener, SubjectUpdatedListener,
 			ParticipantStatusListener {
@@ -65,35 +66,6 @@ public class XMPPCraft extends JavaPlugin {
 			}
 		}
 
-		private boolean shallDisplayMessage(Occupant o) {
-
-			// if message from myself?
-			if (muc.getNickname().equals(o.getNick()))
-				return false;
-
-			// if message from minecraftler with this username?
-			if (getServer().getPlayer(o.getNick()) != null) {
-				// check if this user has a different nick (MC_...) or
-				// (MC_...123)
-
-				// get all XMPP members
-				Iterator<String> it = muc.getOccupants();
-				while (it.hasNext()) {
-					String cur = it.next();
-					if (cur.contains(o.getNick())) {
-						cur = getNickname(cur); // sth. like 'a@b.c/nickname',
-													// split to get the nickname
-						if ("MC ".equals(cur.substring(0, 3)))
-							return true;
-					}
-				}
-
-				return false;
-			}
-
-			return true;
-		}
-
 		@Override
 		public void processPacket(Packet packet) {
 
@@ -103,7 +75,7 @@ public class XMPPCraft extends JavaPlugin {
 				Occupant actor = muc.getOccupant(message.getFrom());
 				// message not from myself ... or other player on this server
 				
-				if (shallDisplayMessage(actor)) {
+				if (isNotMinecraftUser(actor.getNick())) {
 					String actorNick = (actor.getRole().equals("moderator") ? "@" : actor.getRole().equals("participant") ? "+" : "") + actor.getNick();
 					String body = message.getBody();
 					// getServer().broadcastMessage(actorNick + ": " + body);
@@ -154,7 +126,7 @@ public class XMPPCraft extends JavaPlugin {
 		public void left(String participant) {
 
 			// if not minecraft player...
-			if (getServer().getPlayer(participant) == null)
+			if (isNotMinecraftUser(participant))
 				p.sendMessage(ChatColor.GREEN + getNickname(participant) + ChatColor.GOLD + " left the ChatRoom");
 		}
 
@@ -182,7 +154,7 @@ public class XMPPCraft extends JavaPlugin {
 		public void nicknameChanged(String participant, String newNickname) {
 
 			// if not minecraft player...
-			if (getServer().getPlayer(participant) == null)
+			if (isNotMinecraftUser(participant))
 				p.sendMessage(ChatColor.GREEN + getNickname(participant) + ChatColor.GOLD + " changed his Nickname to " + ChatColor.GREEN + newNickname);
 		}
 
@@ -211,7 +183,6 @@ public class XMPPCraft extends JavaPlugin {
 			p.sendMessage(ChatColor.GOLD + "Subject changed to " + ChatColor.GREEN + subject);
 		}
 	}
-
 
 	private final class MyPlayerListener extends PlayerListener {
 
@@ -276,8 +247,14 @@ public class XMPPCraft extends JavaPlugin {
 
 				joinRoom(chatRoom, event.getPlayer().getDisplayName(), configuration.getString("room.password", ""), history, SmackConfiguration.getPacketReplyTimeout());
 
-				plugin.connections.put(event.getPlayer().getName(), c);
-				plugin.chatrooms.put(event.getPlayer().getName(), chatRoom);
+				String name = event.getPlayer().getDisplayName();
+				String chatname = chatRoom.getNickname();
+
+				plugin.connections.put(name, c);
+				plugin.chatrooms.put(name, chatRoom);
+				if (!name.equals(chatname)) // if we have a different name for
+											// chat, add to map
+					plugin.namesMap.put(name, chatname);
 			} catch (XMPPException e) {
 				plugin.log.severe(logPrefix + "Connection failed: " + e.getMessage());
 			}
@@ -311,10 +288,17 @@ public class XMPPCraft extends JavaPlugin {
 
 			// remove this connection
 			String key = event.getPlayer().getName();
+			if (namesMap.containsKey(key))
+				namesMap.remove(key);
 			if (connections.containsKey(key)) {
 				Connection c = connections.get(key);
-				if (c.isConnected() && chatrooms.containsKey(key))
-					chatrooms.get(key).leave();
+
+				if (c.isConnected() && chatrooms.containsKey(key)) {
+					MultiUserChat muc = chatrooms.get(key);
+					if (muc.isJoined())
+						muc.leave();
+					chatrooms.remove(key);
+				}
 
 				if (c.isConnected())
 					c.disconnect();
@@ -349,6 +333,7 @@ public class XMPPCraft extends JavaPlugin {
 		SASLAuthentication.supportSASLMechanism("PLAIN", 0);
 		this.connections = new HashMap<String, Connection>();
 		this.chatrooms = new HashMap<String, MultiUserChat>();
+		this.namesMap = new HashMap<String, String>();
 
 		if (!configuration.getBoolean("plugin.enabled", true)) {
 			log.info(logPrefix + "is disabled because of the configuration file");
@@ -385,6 +370,23 @@ public class XMPPCraft extends JavaPlugin {
 		}
 
 		return config;
+	}
+
+	boolean isNotMinecraftUser(String name) {
+
+		// if message from myself?
+		// if (muc.getNickname().equals(name))
+		// return false;
+
+		// msg from mc-player that has his original name
+		if (getServer().getPlayer(name) != null && !namesMap.containsKey(name))
+			return false;
+
+		// msg from mc player with new name
+		if (getServer().getPlayer(name) == null && namesMap.containsValue(name))
+			return false;
+
+		return true;
 	}
 
 }
