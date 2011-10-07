@@ -3,6 +3,7 @@ XMPPCraft
 
 XMPPCraft is a connectivity plugin that allows Minecraft chat to be mirrored
 in a XMPP MUC chatroom.
+
 I know there are severel other plugins that claim to do the same, but this plugin connects every minecraft player for itself, using its nickname and some anonymous jabber server, so when visiting the MUC with some Jabber Client, you can actually see all Minecraft Players with their names instead of one "CraftXMPP"-User, that just behaves like a bot.
 
 Build Requirements
